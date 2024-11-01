@@ -415,7 +415,10 @@ uint32_t init_tracks(cue_file* file, uint32_t* lba) {
     return 0;
 }
 
-int cue_load(cue_state* cue, int mode) {
+int cue_load(cue_state* cue, int mode, cue_malloc_cb malloc_cb, cue_free_cb free_cb) {
+	cue->malloc_func = malloc_cb;
+	cue->free_func = free_cb;
+
     node_t* node = list_front(cue->files);
 
     // 00:02:00
@@ -441,8 +444,16 @@ int cue_load(cue_state* cue, int mode) {
         //     data->size / 0x930
         // );
 
-        if (data->buf_mode == LD_BUFFERED) {
-            data->buf = malloc(data->size);
+        if (data->buf_mode == LD_BUFFERED || data->buf_mode == LD_BUFFERED_EXT) {
+			if (data->buf_mode == LD_BUFFERED_EXT) {
+				if (cue->malloc_func != NULL) {
+					data->buf = cue->malloc_func(data->size);
+				} else {
+					return CUE_INVALID_ARG;
+				}
+			} else {
+				data->buf = malloc(data->size);
+			}
 
             fseek(file, 0, SEEK_SET);
             size_t ret = fread(data->buf, 1, data->size, file);
@@ -469,11 +480,21 @@ void cue_destroy(cue_state* cue) {
     while (node) {
         cue_file* file = node->data;
 
-        if (file->buf_mode == LD_BUFFERED) {
-            free(file->buf);
-        } else {
-            fclose((FILE*)file->buf);
-        }
+        if (file->buf_mode == LD_BUFFERED || file->buf_mode == LD_BUFFERED_EXT) {
+			if (file->buf_mode == LD_BUFFERED_EXT) {
+				if (file->buf_mode == LD_BUFFERED_EXT) {
+					if (cue->free_func != NULL) {
+						cue->free_func(file->buf);
+					}
+				}
+				else {
+					free(file->buf);
+				}
+			}
+			else {
+				fclose((FILE*)file->buf);
+			}
+		}
 
         list_destroy(file->tracks);
 
@@ -580,7 +601,7 @@ int cue_read(cue_state* cue, uint32_t lba, void* buf) {
     //     (lba - file->start) * 2352
     // );
 
-    if (file->buf_mode == LD_BUFFERED) {
+    if (file->buf_mode == LD_BUFFERED || file->buf_mode == LD_BUFFERED_EXT) {
         uint8_t* ptr = (uint8_t*)file->buf + ((lba - file->start) * 2352);
 
         memcpy(buf, ptr, 2352);

@@ -40,7 +40,8 @@ extern "C" {
 enum {
     CUE_OK = 0,
     CUE_FILE_NOT_FOUND,
-    CUE_TRACK_FILE_NOT_FOUND
+    CUE_TRACK_FILE_NOT_FOUND,
+    CUE_INVALID_ARG
 };
 
 enum {
@@ -79,7 +80,8 @@ enum {
 
 enum {
     LD_BUFFERED,
-    LD_FILE
+    LD_FILE,
+    LD_BUFFERED_EXT,
 };
 
 enum {
@@ -88,6 +90,10 @@ enum {
     TS_AUDIO,
     TS_PREGAP
 };
+
+// User-provided callbacks to handle external memory allocation
+typedef void* (*cue_malloc_cb)(size_t size);
+typedef void (*cue_free_cb)(void* ptr);
 
 typedef struct cue_file {
     char* name;
@@ -117,12 +123,16 @@ typedef struct cue_state {
 
     char c;
     FILE* file;
+
+    cue_malloc_cb malloc_func;
+	cue_free_cb free_func;
 } cue_state;
 
 cue_state* cue_create(void);
 void cue_init(cue_state* cue);
 int cue_parse(cue_state* cue, const char* path);
-int cue_load(cue_state* cue, int mode);
+
+int cue_load(cue_state* cue, int mode, cue_malloc_cb malloc_cb, cue_free_cb free_cb);
 
 // Disc interface
 int cue_read(cue_state* cue, uint32_t lba, void* buf);
